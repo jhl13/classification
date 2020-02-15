@@ -37,8 +37,8 @@ if __name__ == "__main__":
             print ("Warning!!! train category:", i, " is not in test category.")
             flag_equal = 0
 
-    if flag_equal == 1:
-        print ("train category is equal to test category.")
+    assert flag_equal == 1
+    print ("train category is equal to test category.")
 
     flag_existance = 1
     for i in train_instance_paths:
@@ -53,5 +53,10 @@ if __name__ == "__main__":
             print(instance_path, "is not existing")
             flag_existance = 0
     
-    if flag_existance == 1:
-        print ("All files exist.")
+    assert flag_existance == 1
+    print ("All files exist.")
+
+    f = open("./name.names", 'w')
+    for name in train_category.keys():
+        f.write(name+"\n")
+    f.close()

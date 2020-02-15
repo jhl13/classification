@@ -506,6 +506,8 @@ class Model(object):
       # ResNet does an Average Pooling layer over pool_size,
       # but that is the same as doing a reduce_mean. We do a reduce_mean
       # here because it performs better than AveragePooling2D.
+      # channel_first for NCHW
+      # channel_last for NHWC
       axes = [2, 3] if self.data_format == 'channels_first' else [1, 2]
       inputs = tf.reduce_mean(inputs, axes, keepdims=True)
       inputs = tf.identity(inputs, 'final_reduce_mean')
