@@ -12,6 +12,8 @@ from dataset.dataset import Dataset
 from utils import gpu as gpu_util
 from config.config import cfg
 from tqdm import trange
+import numpy as np
+import time
 
 DEFAULT_IMAGE_SIZE = 224
 NUM_CHANNELS = 3
@@ -174,6 +176,8 @@ class CLSTrain(object):
             self.loader = tf.train.Saver(tf.global_variables())
             self.saver  = tf.train.Saver(tf.global_variables(), max_to_keep=3)
 
+        self.total_loss = self.total_loss / cfg.TRAIN.GPU_NUM
+
     def sum_gradients(self, clone_grads):
         """计算梯度
         Arguments:
@@ -201,19 +205,43 @@ class CLSTrain(object):
         self.sess.run(tf.global_variables_initializer())
         try:
             print('=> Restoring weights from: %s ... ' % self.initial_weight)
-            self.loader.restore(self.sess, self.initial_weight)
+            self.loader.restore(self.sess, tf.train.latest_checkpoint(self.initial_weight))
         except:
             print('=> %s does not exist !!!' % self.initial_weight)
             print('=> Now it starts to train YOLOV3 from scratch ...')
-            self.epochs = 0
             ckpt_file = os.path.join(self.save_dir, "initial.ckpt")
             self.saver.save(self.sess, ckpt_file, global_step=self.global_step)
 
         for epoch in range(1, 1+self.total_epochs):
             pbar = trange(self.steps_per_period)
-            for i in pbar:
-                _, train_step_loss, global_step_val = self.sess.run(
+            test = trange(self.steps_test)
+            test_epoch_loss = []
+            train_epoch_loss = []
+            for i in range(1):
+                _, train_step_loss, gsp = self.sess.run(
                     [self.train_op, self.total_loss, self.global_step],feed_dict={self.trainable:    True})
-                pbar.set_description("train loss: %.2f" %(train_step_loss / cfg.TRAIN.GPU_NUM))
+                test_epoch_loss.append(train_step_loss)
+                pbar.set_description("train loss: %.2f" %(train_step_loss))
+                print (gsp)
+        
+            for j in range(1):
+                test_step_loss = self.sess.run(self.total_loss, feed_dict={self.trainable:    False})
+                test_epoch_loss.append(test_step_loss)
+                test.set_description("test loss: %.2f" %(test_step_loss))
+
+                train_epoch_loss, test_epoch_loss = np.mean(train_epoch_loss), np.mean(test_epoch_loss)
+                ckpt_file = os.path.join(self.save_dir, "resnet50_test_loss=%.4f.ckpt" % test_epoch_loss)
+                log_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+
+                if epoch == 1:
+                    test_best_loss = test_epoch_loss
+                if test_epoch_loss <= test_best_loss:
+                    self.saver.save(self.sess, ckpt_file, global_step=epoch)
+                    print("=> Epoch: %2d Time: %s Train loss: %.2f Test loss: %.2f Saving %s ..."
+                                %(epoch, log_time, train_epoch_loss, test_epoch_loss, ckpt_file))
+                    test_best_loss = test_epoch_loss
+                else:
+                    print("=> Epoch: %2d Time: %s we don't save model this epoch ..."
+                                %(epoch, log_time))
 
 if __name__ == '__main__': CLSTrain().train()
