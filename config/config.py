@@ -14,10 +14,15 @@ __C.CLS.DATASET_ROOT_DIR        = "/home/luo13/workspace/dataset/dish"
 __C.TRAIN                       = edict()
 __C.TRAIN.FILE_PATH             = "./dataset/train.txt"
 __C.TRAIN.RESNET_SIZE           = 50
-__C.TRAIN.SAVE_DIR              = "/home/luo13/workspace/model_zoo"
+__C.TRAIN.SAVE_DIR              = "/home/luo13/workspace/model_zoo/classification"
 __C.TRAIN.INPUT_SIZE            = 224
-__C.TRAIN.BATCH_SIZE            = 16
+__C.TRAIN.BATCH_SIZE            = 2
 __C.TRAIN.DATA_AUG              = True
+__C.TRAIN.LEARNING_RATE         = 1e-3
+__C.TRAIN.GPU_NUM               = 1
+__C.TRAIN.MOVING_AVE_DECAY      = 0.9
+__C.TRAIN.INITIAL_WEIGHT        = "./pretrain_weight/"
+__C.TRAIN.TOTAL_EPOCHS          = 50
 
 # test options
 __C.TEST                        = edict()

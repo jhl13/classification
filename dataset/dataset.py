@@ -26,7 +26,6 @@ class Dataset(object):
         self.batch_count = 0
         print ("num_classes:%d, num_samples:%d, batch_size:%d, num_batchs:%d"\
             %(self.num_classes, self.num_samples, self.batch_size, self.num_batchs))
-        print (self.classes)
 
     def load_annotations(self):
         with open(self.file_path, 'r') as f:
@@ -50,7 +49,6 @@ class Dataset(object):
         with tf.device('/cpu:0'):
             batch_image = np.zeros((self.batch_size, self.train_input_size, self.train_input_size, 3))
             batch_label = np.zeros((self.batch_size, self.num_classes))
-
             num = 0
             if self.batch_count < self.num_batchs:
                 while num < self.batch_size:
@@ -58,10 +56,11 @@ class Dataset(object):
                     if index >= self.num_samples:
                         print (index) 
                         index -= self.num_samples
-                        sample_path = self.sample_paths[index]
-                        label, image = self.parse_sample(sample_path)
-                        batch_image[num, :, :, :] = image
-                        batch_label[num, :] = label
+                    sample_path = self.sample_paths[index]
+                    label, image = self.parse_sample(sample_path)
+                    batch_image[num, :, :, :] = image
+                    batch_label[num, :] = label
+                    num += 1
                 self.batch_count += 1
                 return batch_image, batch_label
             else:
@@ -72,7 +71,11 @@ class Dataset(object):
     def parse_sample(self, sample_path):
         label_name, image_path = sample_path
         image = np.array(cv2.imread(image_path))
+        image_resized = cv2.resize(image, (self.input_sizes, self.input_sizes))
         label = self.classes.get(label_name, 0)
         onehot = np.zeros(self.num_classes, dtype=np.float)
         onehot[label] = 1.0
-        return label, image
+        return onehot, image_resized
+    
+    def __len__(self):
+        return self.num_batchs
