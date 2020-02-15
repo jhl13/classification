@@ -7,7 +7,7 @@ cfg                             = __C
 
 # classification options
 __C.CLS                         = edict()
-__C.CLS.CLASSES                 = "./data/name.names"
+__C.CLS.CLASSES                 = "./dataset/name.names"
 __C.CLS.DATASET_ROOT_DIR        = "/home/luo13/workspace/dataset/dish"
 
 # train options
