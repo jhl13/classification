@@ -129,13 +129,14 @@ class CLSTrain(object):
                 train_dataset = tf.data.Dataset.from_generator(lambda: self.trainset, \
                     output_types=(tf.float32, tf.float32), output_shapes=(tf.TensorShape([None,None,None,3]), tf.TensorShape([None, NUM_CLASSES])))
                 train_dataset = train_dataset.repeat()
-                train_dataset = train_dataset.prefetch(buffer_size=50)
+                train_dataset = train_dataset.map(lambda x, y: (x, y), num_parallel_calls=4)
+                train_dataset = train_dataset.prefetch(buffer_size=100)
                 train_dataset_iter = train_dataset.make_one_shot_iterator()
 
                 test_dataset = tf.data.Dataset.from_generator(lambda: self.testset, \
                     output_types=(tf.float32, tf.float32), output_shapes=(tf.TensorShape([None,None,None,3]), tf.TensorShape([None, NUM_CLASSES])))
                 test_dataset = test_dataset.repeat()
-                test_dataset = test_dataset.prefetch(buffer_size=2)
+                test_dataset = test_dataset.prefetch(buffer_size=20)
                 test_dataset_iter = test_dataset.make_one_shot_iterator()
 
                 # NHWC
@@ -157,7 +158,7 @@ class CLSTrain(object):
             with tf.compat.v1.variable_scope(tf.compat.v1.get_variable_scope(), reuse = reuse):
                 with tf.name_scope(self.clone_scopes[clone_idx]) as clone_scope:
                     with tf.device(gpu) as clone_device:
-                        resnet_model = CLSModel(resnet_size=18, data_format="channels_last") # CPU只支持channels_last
+                        resnet_model = CLSModel(resnet_size=18, data_format="channels_first") # CPU只支持channels_last
                         final_dense = resnet_model(batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], self.trainable)
                         labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :]
                         cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(logits=final_dense, labels=labels_per_gpu)

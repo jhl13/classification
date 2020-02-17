@@ -26,7 +26,7 @@ def cal_category(data_file):
     return category, instance_paths
 
 if __name__ == "__main__":
-    root_dir = "/home/luo13/workspace/dataset/dish"
+    root_dir = "/home/ljh/workspace/datasets/baseline_food"
     train_category, train_instance_paths = cal_category("../dataset/train.txt")
     test_category, test_instance_paths = cal_category("../dataset/test.txt")
     assert len(train_category.keys()) == len(test_category.keys())
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     assert flag_existance == 1
     print ("All files exist.")
 
-    f = open("./name.names", 'w')
-    for name in train_category.keys():
-        f.write(name+"\n")
-    f.close()
+    # f = open("./name.names", 'w')
+    # for name in train_category.keys():
+    #     f.write(name+"\n")
+    # f.close()
