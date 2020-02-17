@@ -45,11 +45,14 @@ def batch_norm(inputs, training, data_format):
   """Performs a batch normalization using a standard set of parameters."""
   # We set fused=True for a significant performance boost. See
   # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
+  # training: Either a Python boolean, or a TensorFlow boolean scalar tensor (e.g. a placeholder).
+  # Whether to return the output in training mode (normalized with statistics of the current batch) 
+  # or in inference mode (normalized with moving statistics). NOTE: make sure to set this parameter 
+  # correctly, or else your training/inference will not work properly.
   return tf.layers.batch_normalization(
       inputs=inputs, axis=1 if data_format == 'channels_first' else 3,
       momentum=_BATCH_NORM_DECAY, epsilon=_BATCH_NORM_EPSILON, center=True,
       scale=True, training=training, fused=True)
-
 
 def fixed_padding(inputs, kernel_size, data_format):
   """Pads the input along the spatial dimensions independently of input size.
