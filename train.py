@@ -101,13 +101,19 @@ class CLSModel(resnet_model.Model):
         dtype=dtype
     )
 
-def _preprocess_data(image_path, label):
-    image = np.array(cv2.imread(image_path))
-    image_resized = cv2.resize(image, (224, 224))
-    return label, image_resized
+def _preprocess_data(image_paths, label):
+    batch_image = np.zeros((len(image_paths), 224, 224, 3), dtype=np.float32)
+    for i in range(len(image_paths)):
+        image_path = image_paths[i]
+        image = np.array(cv2.imread(image_path).decode())
+        image_resized = cv2.resize(image, (224, 224))
+        batch_image[len(image_paths), :, :, :] = image_resized
+    return batch_image, label
 
-def py_func_preprocess_data(tensor_image_path, tensor_label):
-    return tf.compat.v1.py_func(_preprocess_data, [tensor_image_path, tensor_label], [tf.float32, tf.float32])
+def py_func_preprocess_data(tensor_image_paths, tensor_label):
+    tensor_image, tensor_label_change = tf.compat.v1.py_func(_preprocess_data, [tensor_image_paths, tensor_label], [tf.float32, tf.float32])
+    tensor_image_reshape = tf.cast(tf.reshape(tensor_image, [16, 224, 224, 3]), dtype=tf.float32)
+    return tensor_image_reshape, tensor_label_change
 
 class CLSTrain(object):
     def __init__(self):
@@ -135,7 +141,7 @@ class CLSTrain(object):
             self.trainable    = tf.compat.v1.placeholder(dtype=tf.bool, name='training')
             with tf.device('/cpu:0'):
                 train_dataset = tf.data.Dataset.from_generator(lambda: self.trainset, \
-                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None,None]), tf.TensorShape([None, NUM_CLASSES])))
+                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, NUM_CLASSES])))
                 train_dataset = train_dataset.repeat()
                 # train_dataset = train_dataset.map(lambda x, y: (x, y), num_parallel_calls=4)
                 train_dataset = train_dataset.map(py_func_preprocess_data, num_parallel_calls=4)
