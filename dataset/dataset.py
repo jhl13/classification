@@ -7,6 +7,11 @@ import tensorflow as tf
 from config.config import cfg
 from utils import io_, str_
 
+_R_MEAN = 123.68
+_G_MEAN = 116.78
+_B_MEAN = 103.94
+_CHANNEL_MEANS = [_R_MEAN, _G_MEAN, _B_MEAN]
+
 class Dataset(object):
     """implement Dataset here"""
     def __init__(self, dataset_type):
@@ -84,3 +89,12 @@ class Dataset(object):
     
     def __len__(self):
         return self.num_batchs
+
+def preprocessing_train(image):
+    pass
+
+def preprocessing_test(image):
+    pass
+
+def crop_and_flip(image):
+    

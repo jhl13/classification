@@ -14,6 +14,7 @@ from config.config import cfg
 from tqdm import trange
 import numpy as np
 import time
+import cv2
 
 DEFAULT_IMAGE_SIZE = 224
 NUM_CHANNELS = 3
@@ -105,9 +106,9 @@ def _preprocess_data(image_paths, label):
     batch_image = np.zeros((len(image_paths), 224, 224, 3), dtype=np.float32)
     for i in range(len(image_paths)):
         image_path = image_paths[i]
-        image = np.array(cv2.imread(image_path).decode())
+        image = np.array(cv2.imread(image_path.decode()))
         image_resized = cv2.resize(image, (224, 224))
-        batch_image[len(image_paths), :, :, :] = image_resized
+        batch_image[i, :, :, :] = image_resized
     return batch_image, label
 
 def py_func_preprocess_data(tensor_image_paths, tensor_label):
@@ -149,7 +150,7 @@ class CLSTrain(object):
                 train_dataset_iter = train_dataset.make_one_shot_iterator()
 
                 test_dataset = tf.data.Dataset.from_generator(lambda: self.testset, \
-                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None,None]), tf.TensorShape([None, NUM_CLASSES])))
+                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, NUM_CLASSES])))
                 test_dataset = test_dataset.repeat()
                 test_dataset = test_dataset.map(py_func_preprocess_data, num_parallel_calls=2)
                 test_dataset = test_dataset.prefetch(buffer_size=20)
@@ -174,7 +175,7 @@ class CLSTrain(object):
             with tf.compat.v1.variable_scope(tf.compat.v1.get_variable_scope(), reuse = reuse):
                 with tf.name_scope(self.clone_scopes[clone_idx]) as clone_scope:
                     with tf.device(gpu) as clone_device:
-                        resnet_model = CLSModel(resnet_size=18, data_format="channels_first") # CPU只支持channels_last
+                        resnet_model = CLSModel(resnet_size=50, data_format="channels_first") # CPU只支持channels_last
                         final_dense = resnet_model(batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], self.trainable)
                         labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :]
                         cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(logits=final_dense, labels=labels_per_gpu)
