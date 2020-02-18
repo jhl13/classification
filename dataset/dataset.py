@@ -55,20 +55,19 @@ class Dataset(object):
             # batch_image = np.zeros((self.batch_size, self.train_input_size, self.train_input_size, 3))
             batch_path = []
             # batch_label = np.zeros((self.batch_size, self.num_classes))
-            batch_label = np.zeros((self.batch_size, 1))
+            batch_label = np.zeros((self.batch_size))
             num = 0
             if self.batch_count < self.num_batchs:
                 while num < self.batch_size:
                     index = self.batch_count * self.batch_size + num
                     if index >= self.num_samples:
-                        print (index) 
                         index -= self.num_samples
                     sample_path = self.sample_paths[index]
                     # label, image = self.parse_sample(sample_path)
                     label, image_path = self.parse_sample(sample_path)
                     # batch_image[num, :, :, :] = image
                     batch_path.append(image_path)
-                    batch_label[num, :] = label
+                    batch_label[num] = label
                     num += 1
                 self.batch_count += 1
                 # return batch_image, batch_label

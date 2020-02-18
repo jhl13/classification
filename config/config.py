@@ -9,7 +9,7 @@ cfg                             = __C
 __C.CLS                         = edict()
 __C.CLS.CLASSES                 = "./dataset/name.names"
 __C.CLS.DATASET_ROOT_DIR        = "../datasets/baseline_food/"
-__C.CLS.GPU                     = "3"
+__C.CLS.GPU                     = "0"
 
 # train options
 __C.TRAIN                       = edict()
@@ -28,8 +28,8 @@ __C.TRAIN.TOTAL_EPOCHS          = 50
 __C.TEST                        = edict()
 __C.TEST.FILE_PATH              = "./dataset/test.txt"
 __C.TEST.INPUT_SIZE             = 224
-__C.TST.GPU                     = "1"
-__C.TEST.BATCH_SIZE             = 1
+__C.TEST.GPU                    = "1"
+__C.TEST.BATCH_SIZE             = 16
 __C.TEST.DATA_AUG               = False
 __C.TEST.MODEL_ZOO              = "../model_zoo/food_classification/baseline"
 __C.TEST.INITIAL_WEIGHT         = "../model_zoo/food_classification/baseline/resnet50_test_loss=2.8496.ckpt-15"

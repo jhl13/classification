@@ -128,16 +128,16 @@ class CLSTrain(object):
             self.trainable    = tf.compat.v1.placeholder(dtype=tf.bool, name='training')
             with tf.device('/cpu:0'):
                 train_dataset = tf.data.Dataset.from_generator(lambda: self.trainset, \
-                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, 1])))
-                train_dataset = train_dataset.prefetch(buffer_size=100)
+                    output_types=(tf.string, tf.int32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None])))
+                train_dataset = train_dataset.prefetch(buffer_size=200)
                 train_dataset = train_dataset.repeat()
                 # train_dataset = train_dataset.map(lambda x, y: (x, y), num_parallel_calls=4)
                 train_dataset = train_dataset.map(self.py_func_preprocess_train, num_parallel_calls=10)
                 train_dataset_iter = train_dataset.make_one_shot_iterator()
 
                 test_dataset = tf.data.Dataset.from_generator(lambda: self.testset, \
-                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, 1])))
-                test_dataset = test_dataset.prefetch(buffer_size=20)
+                    output_types=(tf.string, tf.int32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None])))
+                test_dataset = test_dataset.prefetch(buffer_size=50)
                 test_dataset = test_dataset.repeat()
                 test_dataset = test_dataset.map(self.py_func_preprocess_test, num_parallel_calls=2)
                 test_dataset_iter = test_dataset.make_one_shot_iterator()
@@ -155,17 +155,20 @@ class CLSTrain(object):
             self.optimizer = tf.compat.v1.train.AdamOptimizer(cfg.TRAIN.LEARNING_RATE)
 
         self.total_loss = 0
+        self.acc = 0
         total_clone_gradients = []
         for clone_idx, gpu in enumerate(self.gpus):
             reuse = clone_idx > 0
             with tf.compat.v1.variable_scope(tf.compat.v1.get_variable_scope(), reuse = reuse):
                 with tf.name_scope(self.clone_scopes[clone_idx]) as clone_scope:
                     with tf.device(gpu) as clone_device:
-                        resnet_model = CLSModel(resnet_size=50, data_format="channels_first") # CPU只支持channels_last
+                        resnet_model = CLSModel(resnet_size=50, data_format="channels_last") # CPU只支持channels_last
                         final_dense = resnet_model(batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], self.trainable)
-                        labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :]
+                        labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size]
                         cross_entropy = tf.compat.v1.nn.sparse_softmax_cross_entropy_with_logits(logits=final_dense, labels=labels_per_gpu)
-                        clone_loss = tf.reduce_sum(cross_entropy) * (1.0 / tf.cast(splited_batch_size, dtype=tf.float32))
+                        correct_prediction = tf.equal(tf.cast(tf.argmax(tf.nn.softmax(final_dense), 1), dtype=tf.int32), labels_per_gpu)
+                        self.acc += tf.reduce_mean(tf.cast(correct_prediction, "float"))
+                        clone_loss = tf.reduce_mean(tf.reduce_sum(cross_entropy))
                         self.total_loss += clone_loss
                         clone_gradients = self.optimizer.compute_gradients(clone_loss, var_list=tf.trainable_variables())
                         total_clone_gradients.append(clone_gradients)
@@ -187,6 +190,7 @@ class CLSTrain(object):
             self.saver  = tf.train.Saver(tf.global_variables(), max_to_keep=3)
 
         self.total_loss = self.total_loss / self.GPU_NUM
+        self.acc = self.acc / self.GPU_NUM
 
     def sum_gradients(self, clone_grads):
         """计算梯度
@@ -211,13 +215,15 @@ class CLSTrain(object):
         return averaged_grads
 
     def py_func_preprocess_train(self, tensor_image_paths, tensor_label):
-        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_train, [tensor_image_paths, tensor_label], [tf.float32, tf.float32])
+        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_train, [tensor_image_paths, tensor_label], [tf.float32, tf.int32])
         tensor_image_reshape = tf.cast(tf.reshape(tensor_image, [cfg.TRAIN.BATCH_SIZE, self.image_size, self.image_size, 3]), dtype=tf.float32)
+        tensor_label = tf.cast(tensor_label, dtype=tf.int32)
         return tensor_image_reshape, tensor_label_change
 
     def py_func_preprocess_test(self, tensor_image_paths, tensor_label):
-        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_test, [tensor_image_paths, tensor_label], [tf.float32, tf.float32])
+        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_test, [tensor_image_paths, tensor_label], [tf.float32, tf.int32])
         tensor_image_reshape = tf.cast(tf.reshape(tensor_image, [cfg.TEST.BATCH_SIZE, self.image_size, self.image_size, 3]), dtype=tf.float32)
+        tensor_label = tf.cast(tensor_label, dtype=tf.int32)
         return tensor_image_reshape, tensor_label_change
 
     def train(self):
@@ -237,6 +243,7 @@ class CLSTrain(object):
             test = trange(self.steps_test)
             train_epoch_loss = []
             test_epoch_loss = []
+            test_epoch_acc = []
             for _ in pbar:
                 _, train_step_loss = self.sess.run(
                     [self.train_op, self.total_loss],feed_dict={self.trainable: True})
@@ -244,12 +251,13 @@ class CLSTrain(object):
                 pbar.set_description("train loss: %.2f" %(train_step_loss))
         
             for _ in test:
-                test_step_loss = self.sess.run(self.total_loss, feed_dict={self.trainable: False})
+                test_step_loss, test_step_acc = self.sess.run([self.total_loss, self.acc], feed_dict={self.trainable: False})
                 test_epoch_loss.append(test_step_loss)
+                test_epoch_acc.append(test_step_acc)
                 test.set_description("test loss: %.2f" %(test_step_loss))
 
-            train_epoch_loss, test_epoch_loss = np.mean(train_epoch_loss), np.mean(test_epoch_loss)
-            ckpt_file = os.path.join(self.save_dir, "resnet50_test_loss=%.4f.ckpt" % test_epoch_loss)
+            train_epoch_loss, test_epoch_loss, test_epoch_acc = np.mean(train_epoch_loss), np.mean(test_epoch_loss), np.mean(test_epoch_acc)
+            ckpt_file = os.path.join(self.save_dir, "resnet50_test_loss=%.4f_acc=%.2f.ckpt" % (test_epoch_loss, test_epoch_acc))
             log_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
 
             if epoch == 1:
@@ -260,7 +268,7 @@ class CLSTrain(object):
                             %(epoch, log_time, train_epoch_loss, test_epoch_loss, ckpt_file))
                 test_best_loss = test_epoch_loss
             else:
-                print("=> Epoch: %2d Time: %s we don't save model this epoch ..."
-                                %(epoch, log_time))
+                print("=> Epoch: %2d Time: %s we don't save model this epoch ...\n loss=%.4f acc=%.2f"
+                                %(epoch, log_time, test_epoch_loss, test_epoch_acc))
 
 if __name__ == '__main__': CLSTrain().train()

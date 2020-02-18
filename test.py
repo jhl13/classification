@@ -144,7 +144,7 @@ class CLSTEST(object):
       batch_image, self.batch_label = test_dataset_iter.get_next()
       splited_batch_size = self.test_splited_batch_size
 
-      resnet_model = CLSModel(resnet_size=50, data_format="channels_first")
+      resnet_model = CLSModel(resnet_size=50, data_format="channels_last")
       final_dense = resnet_model(batch_image[:, :, :, :], self.trainable)
       self.p = tf.nn.softmax(final_dense)
 
