@@ -101,6 +101,14 @@ class CLSModel(resnet_model.Model):
         dtype=dtype
     )
 
+def _preprocess_data(image_path, label):
+    image = np.array(cv2.imread(image_path))
+    image_resized = cv2.resize(image, (224, 224))
+    return label, image_resized
+
+def py_func_preprocess_data(tensor_image_path, tensor_label):
+    return tf.compat.v1.py_func(_preprocess_data, [tensor_image_path, tensor_label], [tf.float32, tf.float32])
+
 class CLSTrain(object):
     def __init__(self):
         self.trainset            = Dataset('train')
@@ -127,15 +135,17 @@ class CLSTrain(object):
             self.trainable    = tf.compat.v1.placeholder(dtype=tf.bool, name='training')
             with tf.device('/cpu:0'):
                 train_dataset = tf.data.Dataset.from_generator(lambda: self.trainset, \
-                    output_types=(tf.float32, tf.float32), output_shapes=(tf.TensorShape([None,None,None,3]), tf.TensorShape([None, NUM_CLASSES])))
+                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None,None]), tf.TensorShape([None, NUM_CLASSES])))
                 train_dataset = train_dataset.repeat()
-                train_dataset = train_dataset.map(lambda x, y: (x, y), num_parallel_calls=4)
+                # train_dataset = train_dataset.map(lambda x, y: (x, y), num_parallel_calls=4)
+                train_dataset = train_dataset.map(py_func_preprocess_data, num_parallel_calls=4)
                 train_dataset = train_dataset.prefetch(buffer_size=100)
                 train_dataset_iter = train_dataset.make_one_shot_iterator()
 
                 test_dataset = tf.data.Dataset.from_generator(lambda: self.testset, \
-                    output_types=(tf.float32, tf.float32), output_shapes=(tf.TensorShape([None,None,None,3]), tf.TensorShape([None, NUM_CLASSES])))
+                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None,None]), tf.TensorShape([None, NUM_CLASSES])))
                 test_dataset = test_dataset.repeat()
+                test_dataset = test_dataset.map(py_func_preprocess_data, num_parallel_calls=2)
                 test_dataset = test_dataset.prefetch(buffer_size=20)
                 test_dataset_iter = test_dataset.make_one_shot_iterator()
 

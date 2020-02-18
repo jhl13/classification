@@ -9,7 +9,7 @@ cfg                             = __C
 __C.CLS                         = edict()
 __C.CLS.CLASSES                 = "./dataset/name.names"
 __C.CLS.DATASET_ROOT_DIR        = "../datasets/baseline_food/"
-__C.CLS.GPU                     = "2,3"
+__C.CLS.GPU                     = "3"
 
 # train options
 __C.TRAIN                       = edict()

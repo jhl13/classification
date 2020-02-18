@@ -47,7 +47,8 @@ class Dataset(object):
 
     def __next__(self):
         with tf.device('/cpu:0'):
-            batch_image = np.zeros((self.batch_size, self.train_input_size, self.train_input_size, 3))
+            # batch_image = np.zeros((self.batch_size, self.train_input_size, self.train_input_size, 3))
+            batch_path = []
             batch_label = np.zeros((self.batch_size, self.num_classes))
             num = 0
             if self.batch_count < self.num_batchs:
@@ -57,12 +58,15 @@ class Dataset(object):
                         print (index) 
                         index -= self.num_samples
                     sample_path = self.sample_paths[index]
-                    label, image = self.parse_sample(sample_path)
-                    batch_image[num, :, :, :] = image
+                    # label, image = self.parse_sample(sample_path)
+                    label, image_path = self.parse_sample(sample_path)
+                    # batch_image[num, :, :, :] = image
+                    batch_path.append(image_path)
                     batch_label[num, :] = label
                     num += 1
                 self.batch_count += 1
-                return batch_image, batch_label
+                # return batch_image, batch_label
+                return batch_path, batch_label
             else:
                 self.batch_count = 0
                 np.random.shuffle(self.sample_paths)
@@ -70,12 +74,13 @@ class Dataset(object):
 
     def parse_sample(self, sample_path):
         label_name, image_path = sample_path
-        image = np.array(cv2.imread(image_path))
-        image_resized = cv2.resize(image, (self.input_sizes, self.input_sizes))
+        # image = np.array(cv2.imread(image_path))
+        # image_resized = cv2.resize(image, (self.input_sizes, self.input_sizes))
         label = self.classes.get(label_name, 0)
         onehot = np.zeros(self.num_classes, dtype=np.float)
         onehot[label] = 1.0
-        return onehot, image_resized
+        # return onehot, image_resized
+        return onehot, image_path
     
     def __len__(self):
         return self.num_batchs
