@@ -8,7 +8,7 @@ import os
 import tensorflow as tf  # pylint: disable=g-bad-import-order
 
 from models import resnet as resnet_model
-from dataset.dataset import Dataset
+from dataset.dataset import Dataset, preprocessing_train, preprocessing_test
 from utils import gpu as gpu_util
 from config.config import cfg
 from tqdm import trange
@@ -102,20 +102,6 @@ class CLSModel(resnet_model.Model):
         dtype=dtype
     )
 
-def _preprocess_data(image_paths, label):
-    batch_image = np.zeros((len(image_paths), 224, 224, 3), dtype=np.float32)
-    for i in range(len(image_paths)):
-        image_path = image_paths[i]
-        image = np.array(cv2.imread(image_path.decode()))
-        image_resized = cv2.resize(image, (224, 224))
-        batch_image[i, :, :, :] = image_resized
-    return batch_image, label
-
-def py_func_preprocess_data(tensor_image_paths, tensor_label):
-    tensor_image, tensor_label_change = tf.compat.v1.py_func(_preprocess_data, [tensor_image_paths, tensor_label], [tf.float32, tf.float32])
-    tensor_image_reshape = tf.cast(tf.reshape(tensor_image, [16, 224, 224, 3]), dtype=tf.float32)
-    return tensor_image_reshape, tensor_label_change
-
 class CLSTrain(object):
     def __init__(self):
         self.trainset            = Dataset('train')
@@ -142,18 +128,18 @@ class CLSTrain(object):
             self.trainable    = tf.compat.v1.placeholder(dtype=tf.bool, name='training')
             with tf.device('/cpu:0'):
                 train_dataset = tf.data.Dataset.from_generator(lambda: self.trainset, \
-                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, NUM_CLASSES])))
+                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, 1])))
+                train_dataset = train_dataset.prefetch(buffer_size=100)
                 train_dataset = train_dataset.repeat()
                 # train_dataset = train_dataset.map(lambda x, y: (x, y), num_parallel_calls=4)
-                train_dataset = train_dataset.map(py_func_preprocess_data, num_parallel_calls=4)
-                train_dataset = train_dataset.prefetch(buffer_size=100)
+                train_dataset = train_dataset.map(self.py_func_preprocess_train, num_parallel_calls=10)
                 train_dataset_iter = train_dataset.make_one_shot_iterator()
 
                 test_dataset = tf.data.Dataset.from_generator(lambda: self.testset, \
-                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, NUM_CLASSES])))
-                test_dataset = test_dataset.repeat()
-                test_dataset = test_dataset.map(py_func_preprocess_data, num_parallel_calls=2)
+                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, 1])))
                 test_dataset = test_dataset.prefetch(buffer_size=20)
+                test_dataset = test_dataset.repeat()
+                test_dataset = test_dataset.map(self.py_func_preprocess_test, num_parallel_calls=2)
                 test_dataset_iter = test_dataset.make_one_shot_iterator()
 
                 # NHWC
@@ -178,7 +164,7 @@ class CLSTrain(object):
                         resnet_model = CLSModel(resnet_size=50, data_format="channels_first") # CPU只支持channels_last
                         final_dense = resnet_model(batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], self.trainable)
                         labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :]
-                        cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(logits=final_dense, labels=labels_per_gpu)
+                        cross_entropy = tf.compat.v1.nn.sparse_softmax_cross_entropy_with_logits(logits=final_dense, labels=labels_per_gpu)
                         clone_loss = tf.reduce_sum(cross_entropy) * (1.0 / tf.cast(splited_batch_size, dtype=tf.float32))
                         self.total_loss += clone_loss
                         clone_gradients = self.optimizer.compute_gradients(clone_loss, var_list=tf.trainable_variables())
@@ -223,6 +209,16 @@ class CLSTrain(object):
                 pdb.set_trace()
             averaged_grads.append((grad, v))
         return averaged_grads
+
+    def py_func_preprocess_train(self, tensor_image_paths, tensor_label):
+        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_train, [tensor_image_paths, tensor_label], [tf.float32, tf.float32])
+        tensor_image_reshape = tf.cast(tf.reshape(tensor_image, [cfg.TRAIN.BATCH_SIZE, self.image_size, self.image_size, 3]), dtype=tf.float32)
+        return tensor_image_reshape, tensor_label_change
+
+    def py_func_preprocess_test(self, tensor_image_paths, tensor_label):
+        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_test, [tensor_image_paths, tensor_label], [tf.float32, tf.float32])
+        tensor_image_reshape = tf.cast(tf.reshape(tensor_image, [cfg.TEST.BATCH_SIZE, self.image_size, self.image_size, 3]), dtype=tf.float32)
+        return tensor_image_reshape, tensor_label_change
 
     def train(self):
         test_best_loss = 0

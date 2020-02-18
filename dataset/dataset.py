@@ -10,7 +10,7 @@ from utils import io_, str_
 _R_MEAN = 123.68
 _G_MEAN = 116.78
 _B_MEAN = 103.94
-_CHANNEL_MEANS = [_R_MEAN, _G_MEAN, _B_MEAN]
+_CHANNEL_MEANS = [_B_MEAN, _G_MEAN, _R_MEAN]
 
 class Dataset(object):
     """implement Dataset here"""
@@ -54,7 +54,8 @@ class Dataset(object):
         with tf.device('/cpu:0'):
             # batch_image = np.zeros((self.batch_size, self.train_input_size, self.train_input_size, 3))
             batch_path = []
-            batch_label = np.zeros((self.batch_size, self.num_classes))
+            # batch_label = np.zeros((self.batch_size, self.num_classes))
+            batch_label = np.zeros((self.batch_size, 1))
             num = 0
             if self.batch_count < self.num_batchs:
                 while num < self.batch_size:
@@ -82,19 +83,67 @@ class Dataset(object):
         # image = np.array(cv2.imread(image_path))
         # image_resized = cv2.resize(image, (self.input_sizes, self.input_sizes))
         label = self.classes.get(label_name, 0)
-        onehot = np.zeros(self.num_classes, dtype=np.float)
-        onehot[label] = 1.0
+        # onehot = np.zeros(self.num_classes, dtype=np.float)
+        # onehot[label] = 1.0
         # return onehot, image_resized
-        return onehot, image_path
+        return label, image_path
     
     def __len__(self):
         return self.num_batchs
 
-def preprocessing_train(image):
-    pass
+def preprocessing_train(image_paths, label):
+    batch_image = np.zeros((len(image_paths), cfg.TRAIN.INPUT_SIZE, cfg.TRAIN.INPUT_SIZE, 3), dtype=np.float32)
+    for i in range(len(image_paths)):
+        image_path = image_paths[i]
+        image = np.array(cv2.imread(image_path.decode()), dtype=np.float32)
+        image = crop_and_flip(image)
+        image_resized = cv2.resize(image, (cfg.TRAIN.INPUT_SIZE, cfg.TRAIN.INPUT_SIZE))
+        image_resized = image_resized - _CHANNEL_MEANS
+        batch_image[i, :, :, :] = image_resized
+    return batch_image, label
 
-def preprocessing_test(image):
-    pass
+def preprocessing_test(image_paths, label):
+    batch_image = np.zeros((len(image_paths), cfg.TEST.INPUT_SIZE, cfg.TEST.INPUT_SIZE, 3), dtype=np.float32)
+    for i in range(len(image_paths)):
+        image_path = image_paths[i]
+        image = np.array(cv2.imread(image_path.decode()), dtype=np.float32)
+        image_resized = cv2.resize(image, (cfg.TEST.INPUT_SIZE, cfg.TEST.INPUT_SIZE))
+        image_resized = image_resized - _CHANNEL_MEANS
+        batch_image[i, :, :, :] = image_resized
+    return batch_image, label
 
 def crop_and_flip(image):
-    
+    if random.random() < 0.5: # horizontal
+        image = image[:, ::-1, :]
+
+    if random.random() < 0.5: # vertical
+        image = image[::-1, :, :]
+
+    if random.random() < 0.5: # crop from central
+        h, w, _ = image.shape
+        max_l = w / 2 - cfg.TRAIN.INPUT_SIZE / 2
+        max_u = h / 2 - cfg.TRAIN.INPUT_SIZE / 2
+        max_r = w / 2 + cfg.TRAIN.INPUT_SIZE / 2
+        max_d = h / 2 + cfg.TRAIN.INPUT_SIZE / 2
+        crop_xmin = max(0, int(max_l - random.uniform(0, max_l)))
+        crop_ymin = max(0, int(max_u - random.uniform(0, max_u)))
+        crop_xmax = min(w, int(max_r + random.uniform(0, w - max_r)))
+        crop_ymax = min(h, int(max_d + random.uniform(0, h - max_d)))
+        image = image[crop_ymin : crop_ymax, crop_xmin : crop_xmax]
+    return image
+
+def random_translate(image):
+    if random.random() < 0.5:
+        h, w, _ = image.shape
+
+        max_l = w / 2 - cfg.TRAIN.INPUT_SIZE / 2
+        max_u = h / 2 - cfg.TRAIN.INPUT_SIZE / 2
+        max_r = w / 2 + cfg.TRAIN.INPUT_SIZE / 2
+        max_d = h / 2 + cfg.TRAIN.INPUT_SIZE / 2
+
+        tx = random.uniform(-(max_u - 1), (max_r - 1))
+        ty = random.uniform(-(max_u - 1), (max_d - 1))
+
+        M = np.array([[1, 0, tx], [0, 1, ty]])
+        image = cv2.warpAffine(image, M, (w, h))
+    return image
