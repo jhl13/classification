@@ -109,6 +109,7 @@ class CLSTrain(object):
         self.steps_per_period    = len(self.trainset)
         self.steps_test          = len(self.testset)
         self.moving_ave_decay    = cfg.TRAIN.MOVING_AVE_DECAY
+        self.weight_decay        = cfg.TRAIN.WEIGHT_DECAY
         self.initial_weight      = cfg.TRAIN.INITIAL_WEIGHT
         self.total_epochs        = cfg.TRAIN.TOTAL_EPOCHS
         self.save_dir            = cfg.TRAIN.SAVE_DIR
@@ -155,6 +156,7 @@ class CLSTrain(object):
             self.optimizer = tf.compat.v1.train.AdamOptimizer(cfg.TRAIN.LEARNING_RATE)
 
         self.total_loss = 0
+        self.total_l2_loss = 0
         self.acc = 0
         total_clone_gradients = []
         for clone_idx, gpu in enumerate(self.gpus):
@@ -162,14 +164,23 @@ class CLSTrain(object):
             with tf.compat.v1.variable_scope(tf.compat.v1.get_variable_scope(), reuse = reuse):
                 with tf.name_scope(self.clone_scopes[clone_idx]) as clone_scope:
                     with tf.device(gpu) as clone_device:
+                        tf.summary.image("batch_image", batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], 3)
                         resnet_model = CLSModel(resnet_size=50, data_format="channels_last") # CPU只支持channels_last
                         final_dense = resnet_model(batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], self.trainable)
                         labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size]
                         cross_entropy = tf.compat.v1.nn.sparse_softmax_cross_entropy_with_logits(logits=final_dense, labels=labels_per_gpu)
                         correct_prediction = tf.equal(tf.cast(tf.argmax(tf.nn.softmax(final_dense), 1), dtype=tf.int32), labels_per_gpu)
+                        
+                        # Add weight decay to the loss.
+                        l2_loss = self.weight_decay * tf.add_n(
+                            # loss is computed using fp32 for numerical stability.
+                            [tf.nn.l2_loss(tf.cast(v, tf.float32)) for v in tf.trainable_variables()
+                            if self.exclude_batch_norm(v.name)])
+
                         self.acc += tf.reduce_mean(tf.cast(correct_prediction, "float"))
-                        clone_loss = tf.reduce_mean(tf.reduce_sum(cross_entropy))
+                        clone_loss = tf.reduce_mean(cross_entropy) + l2_loss
                         self.total_loss += clone_loss
+                        self.total_l2_loss += l2_loss
                         clone_gradients = self.optimizer.compute_gradients(clone_loss, var_list=tf.trainable_variables())
                         total_clone_gradients.append(clone_gradients)
         average_gradients = self.sum_gradients(total_clone_gradients)
@@ -191,6 +202,14 @@ class CLSTrain(object):
 
         self.total_loss = self.total_loss / self.GPU_NUM
         self.acc = self.acc / self.GPU_NUM
+        self.total_l2_loss = self.total_l2_loss / self.GPU_NUM
+
+        tf.summary.scalar("total_loss", self.total_loss)
+        tf.summary.scalar("total_l2_loss", self.total_l2_loss)
+        tf.summary.scalar("acc", self.acc)
+
+        self.write_op = tf.summary.merge_all()
+        self.summary_writer  = tf.summary.FileWriter(self.save_dir, graph=self.sess.graph)
 
     def sum_gradients(self, clone_grads):
         """计算梯度
@@ -213,6 +232,9 @@ class CLSTrain(object):
                 pdb.set_trace()
             averaged_grads.append((grad, v))
         return averaged_grads
+
+    def exclude_batch_norm(self, name):
+        return 'batch_normalization' not in name
 
     def py_func_preprocess_train(self, tensor_image_paths, tensor_label):
         tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_train, [tensor_image_paths, tensor_label], [tf.float32, tf.int32])
@@ -244,11 +266,13 @@ class CLSTrain(object):
             train_epoch_loss = []
             test_epoch_loss = []
             test_epoch_acc = []
-            for _ in pbar:
-                _, train_step_loss = self.sess.run(
-                    [self.train_op, self.total_loss],feed_dict={self.trainable: True})
+            for i in pbar:
+                _, train_step_loss, summary, global_step_value = self.sess.run(
+                    [self.train_op, self.total_loss, self.write_op, self.global_step],feed_dict={self.trainable: True})
                 train_epoch_loss.append(train_step_loss)
                 pbar.set_description("train loss: %.2f" %(train_step_loss))
+                if int(global_step_value) % 100 == 0:
+                    self.summary_writer.add_summary(summary, global_step_value)
         
             for _ in test:
                 test_step_loss, test_step_acc = self.sess.run([self.total_loss, self.acc], feed_dict={self.trainable: False})
