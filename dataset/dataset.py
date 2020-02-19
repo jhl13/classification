@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from config.config import cfg
 from utils import io_, str_
+from pandas import read_csv
 
 _R_MEAN = 123.68
 _G_MEAN = 116.78
@@ -15,24 +16,30 @@ _CHANNEL_MEANS = [_B_MEAN, _G_MEAN, _R_MEAN]
 class Dataset(object):
     """implement Dataset here"""
     def __init__(self, dataset_type):
-        self.root_dir    = cfg.CLS.DATASET_ROOT_DIR
-        self.file_path   = cfg.TRAIN.FILE_PATH if dataset_type == 'train' else cfg.TEST.FILE_PATH
+        self.dataset_type = dataset_type
         self.input_sizes = cfg.TRAIN.INPUT_SIZE if dataset_type == 'train' else cfg.TEST.INPUT_SIZE
         self.batch_size  = cfg.TRAIN.BATCH_SIZE if dataset_type == 'train' else cfg.TEST.BATCH_SIZE
         self.data_aug    = cfg.TRAIN.DATA_AUG   if dataset_type == 'train' else cfg.TEST.DATA_AUG
-
-        self.train_input_size = cfg.TRAIN.INPUT_SIZE # 改成多尺度？
-        self.classes = io_.read_class_names(cfg.CLS.CLASSES )
-        self.num_classes = len(self.classes)
-
-        self.sample_paths = self.load_annotations()
-        self.num_samples = len(self.sample_paths)
+        self.root_dir    = cfg.CLS.DATASET_ROOT_DIR
+        assert cfg.CLS.DATASET in ["ifood-251", "food-462"]
+        if cfg.CLS.DATASET == "food-462":
+            self.file_path   = cfg.TRAIN.FILE_PATH_462 if dataset_type == 'train' else cfg.TEST.FILE_PATH_462
+            self.classes = io_.read_class_names_462(cfg.CLS.CLASSES_462)
+            self.sample_paths = self.load_annotations_462()
+            self.num_classes = len(self.classes)
+            self.num_samples = len(self.sample_paths)
+        else:
+            self.file_path   = cfg.TRAIN.FILE_PATH_251 if dataset_type == 'train' else cfg.TEST.FILE_PATH_251
+            self.classes = io_.read_class_names_251(cfg.CLS.CLASSES_251)
+            self.sample_paths = self.load_annotations_251()
+            self.num_classes = len(self.classes)
+            self.num_samples = len(self.sample_paths)
         self.num_batchs = int(np.ceil(self.num_samples / self.batch_size))
         self.batch_count = 0
         print ("num_classes:%d, num_samples:%d, batch_size:%d, num_batchs:%d"\
             %(self.num_classes, self.num_samples, self.batch_size, self.num_batchs))
 
-    def load_annotations(self):
+    def load_annotations_462(self):
         with open(self.file_path, 'r') as f:
             labels_paths = []
             txt = f.readlines()
@@ -44,6 +51,21 @@ class Dataset(object):
                     path = os.path.join(self.root_dir, path)
                     label_path = [label_name, path]
                     labels_paths.append(label_path)
+        np.random.shuffle(labels_paths)
+        return labels_paths
+
+    def load_annotations_251(self):
+        ann = read_csv(self.file_path)
+        labels_paths = []
+        if self.dataset_type == "train":
+            train_dir = "ifood-2019-fgvc6/train_set"
+            ann['path'] = ann['img_name'].map(lambda x: os.path.join(self.root_dir, os.path.join(train_dir, x)))
+        else:
+            val_dir = "ifood-2019-fgvc6/val_set"
+            ann['path'] = ann['img_name'].map(lambda x: os.path.join(self.root_dir, os.path.join(val_dir, x)))
+        for i in range(len(ann)):
+            label_path = [ann['label'][i], ann['path'][i]]
+            labels_paths.append(label_path)
         np.random.shuffle(labels_paths)
         return labels_paths
 
@@ -81,7 +103,10 @@ class Dataset(object):
         label_name, image_path = sample_path
         # image = np.array(cv2.imread(image_path))
         # image_resized = cv2.resize(image, (self.input_sizes, self.input_sizes))
-        label = self.classes.get(label_name, 0)
+        if isinstance(label_name, str) is True:
+            label = self.classes.get(label_name, 0)
+        else:
+            label = label_name
         # onehot = np.zeros(self.num_classes, dtype=np.float)
         # onehot[label] = 1.0
         # return onehot, image_resized
