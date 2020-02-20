@@ -11,21 +11,21 @@ __C.CLS.DATASET                 = "food-462" # ifood-251 or food-462
 __C.CLS.CLASSES_462             = "./dataset/name.names"
 __C.CLS.CLASSES_251             = "./dataset/class_list.txt"
 __C.CLS.DATASET_ROOT_DIR        = "../datasets/baseline_food/"
-__C.CLS.GPU                     = "2,3"
+__C.CLS.GPU                     = "1"
 
 # train options
 __C.TRAIN                       = edict()
 __C.TRAIN.FILE_PATH_462         = "./dataset/train.txt"
 __C.TRAIN.FILE_PATH_251         = "./dataset/train_labels.csv"
 __C.TRAIN.RESNET_SIZE           = 50
-__C.TRAIN.SAVE_DIR              = "../model_zoo/food_classification/food-462-sigmoid"
+__C.TRAIN.SAVE_DIR              = "../model_zoo/food_classification/food-462-mobile"
 __C.TRAIN.INPUT_SIZE            = 224
-__C.TRAIN.BATCH_SIZE            = 32
+__C.TRAIN.BATCH_SIZE            = 1
 __C.TRAIN.DATA_AUG              = True
 __C.TRAIN.LEARNING_RATE         = 1e-3
 __C.TRAIN.WEIGHT_DECAY          = 1e-4
 __C.TRAIN.MOVING_AVE_DECAY      = 0.9
-__C.TRAIN.INITIAL_WEIGHT        = "../model_zoo/food_classification/food-462-sigmoid"
+__C.TRAIN.INITIAL_WEIGHT        = "../model_zoo/food_classification/food-462-mobile"
 __C.TRAIN.TOTAL_EPOCHS          = 50
 
 # test options

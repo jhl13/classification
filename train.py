@@ -12,6 +12,7 @@ from dataset.dataset import Dataset, preprocessing_train, preprocessing_test
 from utils import gpu as gpu_util
 from config.config import cfg
 from tqdm import trange
+from models.mobilenet import mobilenet_v2
 import numpy as np
 import time
 import cv2
@@ -113,6 +114,7 @@ class CLSTrain(object):
         self.initial_weight      = cfg.TRAIN.INITIAL_WEIGHT
         self.total_epochs        = cfg.TRAIN.TOTAL_EPOCHS
         self.save_dir            = cfg.TRAIN.SAVE_DIR
+        self.learning_rate       = cfg.TRAIN.LEARNING_RATE
         # self.mirrored_strategy = tf.distribute.MirroredStrategy()# 感觉只是做了分配数据这一步
         self.GPU_NUM             = len(cfg.CLS.GPU) if len(cfg.CLS.GPU) == 1 else len(cfg.CLS.GPU) - 1
         self.gpus                = gpu_util.get_available_gpus(self.GPU_NUM)
@@ -153,7 +155,9 @@ class CLSTrain(object):
         with tf.name_scope('optimizer'):
             self.global_step = tf.Variable(1.0, dtype=tf.float64, trainable=False, name='global_step')
             self.global_step_update = tf.compat.v1.assign_add(self.global_step, 1.0)
-            self.optimizer = tf.compat.v1.train.AdamOptimizer(cfg.TRAIN.LEARNING_RATE)
+            epoch_10 = (self.global_step // self.steps_per_period) // 20
+            self.learning_rate = self.learning_rate * tf.pow(0.1, epoch_10)
+            self.optimizer = tf.compat.v1.train.AdamOptimizer(self.learning_rate)
 
         self.total_loss = 0
         # self.total_l2_loss = 0
@@ -165,8 +169,13 @@ class CLSTrain(object):
                 with tf.name_scope(self.clone_scopes[clone_idx]) as clone_scope:
                     with tf.device(gpu) as clone_device:
                         tf.summary.image("batch_image", batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], 3)
-                        resnet_model = CLSModel(resnet_size=50, data_format="channels_last") # CPU只支持channels_last
-                        final_dense = resnet_model(batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], self.trainable)
+                        # resnet_model = CLSModel(resnet_size=50, data_format="channels_last") # CPU只支持channels_last
+                        # final_dense = resnet_model(batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], self.trainable)
+                        with tf.contrib.slim.arg_scope(mobilenet_v2.training_scope(is_training=self.trainable)):
+                                final_dense, endpoints = \
+                                    mobilenet_v2.mobilenet(batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], \
+                                        num_classes=NUM_CLASSES)
+
                         labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :]
                         cross_entropy = tf.compat.v1.nn.sigmoid_cross_entropy_with_logits(logits=final_dense, labels=labels_per_gpu)
                         correct_prediction = tf.equal(tf.cast(tf.argmax(tf.nn.softmax(final_dense), 1), dtype=tf.int32), \
@@ -206,7 +215,7 @@ class CLSTrain(object):
         # self.total_l2_loss = self.total_l2_loss / self.GPU_NUM
 
         tf.summary.scalar("total_loss", self.total_loss)
-        # tf.summary.scalar("total_l2_loss", self.total_l2_loss)
+        tf.summary.scalar("learning_rate", self.learning_rate)
         tf.summary.scalar("acc", self.acc)
 
         self.write_op = tf.summary.merge_all()
