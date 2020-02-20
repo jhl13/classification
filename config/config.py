@@ -18,14 +18,14 @@ __C.TRAIN                       = edict()
 __C.TRAIN.FILE_PATH_462         = "./dataset/train.txt"
 __C.TRAIN.FILE_PATH_251         = "./dataset/train_labels.csv"
 __C.TRAIN.RESNET_SIZE           = 50
-__C.TRAIN.SAVE_DIR              = "../model_zoo/food_classification/food-462-l2"
+__C.TRAIN.SAVE_DIR              = "../model_zoo/food_classification/food-462-sigmoid"
 __C.TRAIN.INPUT_SIZE            = 224
 __C.TRAIN.BATCH_SIZE            = 32
 __C.TRAIN.DATA_AUG              = True
 __C.TRAIN.LEARNING_RATE         = 1e-3
 __C.TRAIN.WEIGHT_DECAY          = 1e-4
 __C.TRAIN.MOVING_AVE_DECAY      = 0.9
-__C.TRAIN.INITIAL_WEIGHT        = "../model_zoo/food_classification/food-462-l2"
+__C.TRAIN.INITIAL_WEIGHT        = "../model_zoo/food_classification/food-462-sigmoid"
 __C.TRAIN.TOTAL_EPOCHS          = 50
 
 # test options
