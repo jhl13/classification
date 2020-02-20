@@ -154,9 +154,10 @@ class CLSTrain(object):
 
         with tf.name_scope('optimizer'):
             self.global_step = tf.Variable(1.0, dtype=tf.float64, trainable=False, name='global_step')
+            self.base = tf.Variable(0.1, dtype=tf.float32, trainable=False, name='base')
             self.global_step_update = tf.compat.v1.assign_add(self.global_step, 1.0)
-            epoch_10 = (self.global_step // self.steps_per_period) // 20
-            self.learning_rate = self.learning_rate * tf.pow(0.1, epoch_10)
+            epoch_10 = tf.cast((self.global_step // self.steps_per_period) // 20, dtype=tf.float32)
+            self.learning_rate = self.learning_rate * tf.pow(self.base, epoch_10)
             self.optimizer = tf.compat.v1.train.AdamOptimizer(self.learning_rate)
 
         self.total_loss = 0
