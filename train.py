@@ -178,7 +178,8 @@ class CLSTrain(object):
                         #                 num_classes=NUM_CLASSES)
 
                         labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size]
-                        cross_entropy = tf.compat.v1.nn.sparse_softmax_cross_entropy_with_logits(logits=final_dense, labels=labels_per_gpu)
+                        # cross_entropy = tf.compat.v1.nn.sparse_softmax_cross_entropy_with_logits(logits=final_dense, labels=labels_per_gpu)
+                        cross_entropy = self.focal_loss_softmax(final_dense)
                         correct_prediction = tf.equal(tf.cast(tf.argmax(tf.nn.softmax(final_dense), 1), dtype=tf.int32), labels_per_gpu)
                         
                         # # Add weight decay to the loss.
@@ -242,6 +243,26 @@ class CLSTrain(object):
                 pdb.set_trace()
             averaged_grads.append((grad, v))
         return averaged_grads
+
+    def focal_loss_softmax(self, input_data, one_hot_label):
+        softmax_input = tf.nn.softmax(input_data)
+        p_true = tf.reduce_sum(one_hot_label*softmax_input, 1)
+        focal_loss = tf.reduce_sum(-tf.pow((1 - p_true), 2) * tf.reduce_sum(one_hot_label*tf.log(softmax_input), 1), 0) \
+            / tf.reduce_max(tf.reduce_sum(one_hot_label, 1)) # 用该批次里最少的同一类样本数进行归一化
+        return focal_loss
+
+    def focal_loss_sigmoid(self, input_data, one_hot_label): # 可能存在多个标签
+        sigmoid_input = tf.nn.sigmoid(input_data)
+        focal_loss_pos = tf.reduce_mean(\
+            -tf.reduce_sum(tf.pow(one_hot_label * (1 - sigmoid_input), 2), 1) * \
+                tf.reduce_sum(one_hot_label * tf.log(sigmoid_input), 1), 0) # 保证标签为1的预测值都是1
+        
+        focal_loss_neg = tf.reduce_mean(\
+            -tf.reduce_sum(tf.pow((1 - one_hot_label) * (sigmoid_input), 2), 1) * \
+                tf.reduce_sum((1 - one_hot_label) * tf.log(1 - sigmoid_input), 1), 0) # 保证标签为0的预测值都是0
+
+        focal_loss = focal_loss_pos + focal_loss_neg
+        return focal_loss
 
     def exclude_batch_norm(self, name):
         return 'batch_normalization' not in name
