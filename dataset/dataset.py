@@ -76,7 +76,7 @@ class Dataset(object):
         with tf.device('/cpu:0'):
             # batch_image = np.zeros((self.batch_size, self.train_input_size, self.train_input_size, 3))
             batch_path = []
-            batch_label = np.zeros((self.batch_size, self.num_classes))
+            batch_label = np.zeros((self.batch_size))
             # batch_label = np.zeros((self.batch_size))
             num = 0
             if self.batch_count < self.num_batchs:
@@ -89,7 +89,7 @@ class Dataset(object):
                     label, image_path = self.parse_sample(sample_path)
                     # batch_image[num, :, :, :] = image
                     batch_path.append(image_path)
-                    batch_label[num, :] = label
+                    batch_label[num] = label
                     num += 1
                 self.batch_count += 1
                 # return batch_image, batch_label
@@ -105,15 +105,15 @@ class Dataset(object):
         # image_resized = cv2.resize(image, (self.input_sizes, self.input_sizes))
         if isinstance(label_name, str) is True:
             label = self.classes.get(label_name, 0)
-            onehot = np.zeros(self.num_classes, dtype=np.float)
-            onehot[label] = 1.0
-            return onehot, image_path
+            # onehot = np.zeros(self.num_classes, dtype=np.float)
+            # onehot[label] = 1.0
+            return label, image_path
         else:
             label = label_name
         # onehot = np.zeros(self.num_classes, dtype=np.float)
         # onehot[label] = 1.0
         # return onehot, image_resized
-        return label, image_path
+            return label, image_path
     
     def __len__(self):
         return self.num_batchs
