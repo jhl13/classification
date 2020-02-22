@@ -261,7 +261,7 @@ class CLSTrain(object):
             -tf.reduce_sum(tf.pow((1 - one_hot_label) * (sigmoid_input), 2), 1) * \
                 tf.reduce_sum((1 - one_hot_label) * tf.log(1 - sigmoid_input), 1), 0) # 保证标签为0的预测值都是0
 
-        focal_loss = focal_loss_pos + focal_loss_neg
+        focal_loss = (focal_loss_pos + focal_loss_neg) / tf.reduce_max(tf.reduce_sum(one_hot_label, 1))
         return focal_loss
 
     def exclude_batch_norm(self, name):
