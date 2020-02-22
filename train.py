@@ -131,7 +131,7 @@ class CLSTrain(object):
             self.trainable    = tf.compat.v1.placeholder(dtype=tf.bool, name='training')
             with tf.device('/cpu:0'):
                 train_dataset = tf.data.Dataset.from_generator(lambda: self.trainset, \
-                    output_types=(tf.string, tf.int32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None])))
+                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, NUM_CLASSES])))
                 train_dataset = train_dataset.prefetch(buffer_size=200)
                 train_dataset = train_dataset.repeat()
                 # train_dataset = train_dataset.map(lambda x, y: (x, y), num_parallel_calls=4)
@@ -139,7 +139,7 @@ class CLSTrain(object):
                 train_dataset_iter = train_dataset.make_one_shot_iterator()
 
                 test_dataset = tf.data.Dataset.from_generator(lambda: self.testset, \
-                    output_types=(tf.string, tf.int32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None])))
+                    output_types=(tf.string, tf.float32), output_shapes=(tf.TensorShape([None]), tf.TensorShape([None, NUM_CLASSES])))
                 test_dataset = test_dataset.prefetch(buffer_size=50)
                 test_dataset = test_dataset.repeat()
                 test_dataset = test_dataset.map(self.py_func_preprocess_test, num_parallel_calls=2)
@@ -177,10 +177,11 @@ class CLSTrain(object):
                         #             mobilenet_v2.mobilenet(batch_image[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :, :, :], \
                         #                 num_classes=NUM_CLASSES)
 
-                        labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size]
+                        labels_per_gpu = batch_label[clone_idx*splited_batch_size:(clone_idx+1)*splited_batch_size, :]
                         # cross_entropy = tf.compat.v1.nn.sparse_softmax_cross_entropy_with_logits(logits=final_dense, labels=labels_per_gpu)
-                        cross_entropy = self.focal_loss_softmax(final_dense)
-                        correct_prediction = tf.equal(tf.cast(tf.argmax(tf.nn.softmax(final_dense), 1), dtype=tf.int32), labels_per_gpu)
+                        cross_entropy = self.focal_loss_sigmoid(final_dense, labels_per_gpu)
+                        correct_prediction = tf.equal(tf.cast(tf.argmax(tf.nn.softmax(final_dense), 1), dtype=tf.int32), \
+                            tf.cast(tf.argmax((labels_per_gpu), 1), dtype=tf.int32))
                         
                         # # Add weight decay to the loss.
                         # l2_loss = self.weight_decay * tf.add_n(
@@ -189,7 +190,7 @@ class CLSTrain(object):
                         #     if self.exclude_batch_norm(v.name)])
 
                         self.acc += tf.reduce_mean(tf.cast(correct_prediction, "float"))
-                        clone_loss = tf.reduce_mean(cross_entropy)# + l2_loss
+                        clone_loss = cross_entropy
                         self.total_loss += clone_loss
                         # self.total_l2_loss += l2_loss
                         clone_gradients = self.optimizer.compute_gradients(clone_loss, var_list=tf.trainable_variables())
@@ -247,36 +248,35 @@ class CLSTrain(object):
     def focal_loss_softmax(self, input_data, one_hot_label):
         softmax_input = tf.nn.softmax(input_data)
         p_true = tf.reduce_sum(one_hot_label*softmax_input, 1)
-        focal_loss = tf.reduce_sum(-tf.pow((1 - p_true), 2) * tf.reduce_sum(one_hot_label*tf.log(softmax_input), 1), 0) \
-            / tf.reduce_max(tf.reduce_sum(one_hot_label, 1)) # 用该批次里最少的同一类样本数进行归一化
+        focal_loss = tf.reduce_sum(-tf.pow((1 - p_true), 2) * tf.reduce_sum(one_hot_label*tf.log(softmax_input), 1), 0) # 用该批次里最少的同一类样本数进行归一化
         return focal_loss
 
     def focal_loss_sigmoid(self, input_data, one_hot_label): # 可能存在多个标签
         sigmoid_input = tf.nn.sigmoid(input_data)
-        focal_loss_pos = tf.reduce_mean(\
+        focal_loss_pos = tf.reduce_sum(\
             -tf.reduce_sum(tf.pow(one_hot_label * (1 - sigmoid_input), 2), 1) * \
                 tf.reduce_sum(one_hot_label * tf.log(sigmoid_input), 1), 0) # 保证标签为1的预测值都是1
         
-        focal_loss_neg = tf.reduce_mean(\
+        focal_loss_neg = tf.reduce_sum(\
             -tf.reduce_sum(tf.pow((1 - one_hot_label) * (sigmoid_input), 2), 1) * \
                 tf.reduce_sum((1 - one_hot_label) * tf.log(1 - sigmoid_input), 1), 0) # 保证标签为0的预测值都是0
 
-        focal_loss = (focal_loss_pos + focal_loss_neg) / tf.reduce_max(tf.reduce_sum(one_hot_label, 1))
+        focal_loss = (focal_loss_pos + focal_loss_neg)
         return focal_loss
 
     def exclude_batch_norm(self, name):
         return 'batch_normalization' not in name
 
     def py_func_preprocess_train(self, tensor_image_paths, tensor_label):
-        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_train, [tensor_image_paths, tensor_label], [tf.float32, tf.int32])
+        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_train, [tensor_image_paths, tensor_label], [tf.float32, tf.float32])
         tensor_image_reshape = tf.cast(tf.reshape(tensor_image, [cfg.TRAIN.BATCH_SIZE, self.image_size, self.image_size, 3]), dtype=tf.float32)
-        tensor_label = tf.cast(tensor_label, dtype=tf.int32)
+        tensor_label = tf.cast(tensor_label, dtype=tf.float32)
         return tensor_image_reshape, tensor_label_change
 
     def py_func_preprocess_test(self, tensor_image_paths, tensor_label):
-        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_test, [tensor_image_paths, tensor_label], [tf.float32, tf.int32])
+        tensor_image, tensor_label_change = tf.compat.v1.py_func(preprocessing_test, [tensor_image_paths, tensor_label], [tf.float32, tf.float32])
         tensor_image_reshape = tf.cast(tf.reshape(tensor_image, [cfg.TEST.BATCH_SIZE, self.image_size, self.image_size, 3]), dtype=tf.float32)
-        tensor_label = tf.cast(tensor_label, dtype=tf.int32)
+        tensor_label = tf.cast(tensor_label, dtype=tf.float32)
         return tensor_image_reshape, tensor_label_change
 
     def train(self):
